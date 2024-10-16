@@ -1,16 +1,19 @@
 import fs from 'fs';
+import bs58 from 'bs58';
 import path from 'path';
 import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 import { PumpFunSDK } from 'pumpdotfun-sdk';
 import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 import dotenv from 'dotenv';
 import logger from './logger';
-
+import { PaperWalletSell } from './paperWallet';
+import { getPriceAndMarketCap } from './PandM';
 dotenv.config();
 
 const SLIPPAGE_BASIS_POINTS = 2000n;
 const RPC_URL = process.env.HELIUS_RPC_URL || '';
 const PRIVATE_KEY = process.env.PRIVATE_KEY || '';
+const PAPER_TRADE = process.env.PAPER_TRADE;
 
 if (!RPC_URL) {
   throw new Error('Please set HELIUS_RPC_URL in .env file');
@@ -41,8 +44,23 @@ const updateAssetsFile = (updatedAssets: Asset[]): void => {
   fs.writeFileSync(filePath, data, 'utf8');
 };
 
-const sellToken = async (seller: Keypair, mintAddress: PublicKey, percentageToSell: number): Promise<{ sold: boolean, remainingTokens: number }> => {
+const sellToken = async (mintAddress: PublicKey, percentageToSell: number): Promise<{ sold: boolean, remainingTokens: number }> => {
   try {
+
+    if (PAPER_TRADE) {
+      const priceData = await getPriceAndMarketCap(mintAddress.toBase58());
+      if (!priceData) {
+        throw new Error('Failed to fetch price and market cap data for selling.');
+      }
+
+      const { price } = priceData;
+      const result = PaperWalletSell(mintAddress.toBase58(), percentageToSell, price);
+
+      return { sold: result.sold, remainingTokens: result.remainingTokens };
+    }
+
+    const privateKey = bs58.decode(process.env.PRIVATE_KEY!);
+    const seller = Keypair.fromSecretKey(privateKey);
     const provider = getProvider(new Wallet(seller));
     const sdk = new PumpFunSDK(provider);
 

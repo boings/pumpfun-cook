@@ -2,7 +2,6 @@ import { readAssetsFile, AssetDetails } from './reader';
 import { checkCurrentPriceAndMarketCap } from './PandM2';
 import { sellToken, updateAssetsFile } from './sell';
 import { Keypair, PublicKey } from '@solana/web3.js';
-import bs58 from 'bs58';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,13 +11,14 @@ const PRICE_DECREASE_THRESHOLD = parseFloat(process.env.PRICE_DECREASE_THRESHOLD
 const SELL_PERCENTAGE_ON_INCREASE = parseFloat(process.env.SELL_PERCENTAGE_ON_INCREASE!);
 const SELL_PERCENTAGE_ON_DECREASE = parseFloat(process.env.SELL_PERCENTAGE_ON_DECREASE!);
 const EVALUATION_INTERVAL = parseInt(process.env.EVALUATION_INTERVAL!, 10);
+const PAPER_TRADE = process.env.PAPER_TRADE;
 
 interface EvaluationResult {
     tokenAddress: string | null;
     sold: boolean;
 }
 
-async function evaluateToken(asset: AssetDetails, sellerKeypair: Keypair): Promise<EvaluationResult> {
+async function evaluateToken(asset: AssetDetails): Promise<EvaluationResult> {
     if (!asset || !asset.tokenAddress) {
         console.log(`Invalid asset data...... Skipping...`);
         return { tokenAddress: null, sold: false };
@@ -53,7 +53,7 @@ async function evaluateToken(asset: AssetDetails, sellerKeypair: Keypair): Promi
         }
 
         if (salePercentage > 0) {
-            const { sold } = await sellToken(sellerKeypair, new PublicKey(asset.tokenAddress), salePercentage);
+            const { sold } = await sellToken(new PublicKey(asset.tokenAddress), salePercentage);
             if (sold) {
                 console.log(`Token ${asset.tokenAddress} - Price/MC Change: ${changePercentage.toFixed(2)}%. Action: ${actionMessage}`);
                 return { tokenAddress: asset.tokenAddress, sold: true };
@@ -69,8 +69,6 @@ async function evaluateToken(asset: AssetDetails, sellerKeypair: Keypair): Promi
 }
 
 async function evaluateTokensContinuously() {
-    const privateKey = bs58.decode(process.env.PRIVATE_KEY!);
-    const sellerKeypair = Keypair.fromSecretKey(privateKey);
 
     let currentIndex = 0;
 
@@ -89,7 +87,7 @@ async function evaluateTokensContinuously() {
         const asset = assets[currentIndex];
 
         if (asset) {
-            const result = await evaluateToken(asset, sellerKeypair);
+            const result = await evaluateToken(asset);
 
             if (result.sold) {
                 assets = assets.filter(a => a.tokenAddress !== result.tokenAddress);
